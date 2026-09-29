@@ -16,6 +16,7 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
 .nav-logo span{color:var(--muted);font-weight:400;}
 .nav-tab{padding:14px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;border:none;background:transparent;font-family:inherit;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;text-decoration:none;}
 .nav-tab.active{color:var(--text);border-bottom-color:var(--text);}
+.nav-refresh{margin-left:auto;}
 
 /* DATE FILTER BAR */
 .date-bar{background:var(--surface);border-bottom:.5px solid var(--border);padding:8px 1.5rem;}
@@ -104,6 +105,7 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
 .ad-thumb{width:96px;height:96px;object-fit:cover;border-radius:6px;background:var(--surface2);display:block;cursor:zoom-in;}
 .ad-thumb-cell{width:106px;padding:6px 4px 6px 10px!important;}
 .thumb-none{width:96px;height:96px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);}
+.thumb-none[href]{text-decoration:underline;}
 /* 가로 스크롤이 생겨도 소재명은 항상 보이도록 왼쪽 두 열을 고정한다 */
 .ad-tbl th.stick,.ad-tbl td.stick{position:sticky;background:var(--surface);z-index:2;}
 .ad-tbl th.stick{z-index:3;}
@@ -152,7 +154,7 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
     <button class="nav-tab" onclick="goPage('creative',this)">By Creative</button>
     <button class="nav-tab" onclick="goPage('weekly',this)">Weekly Trend</button>
     <button class="nav-tab" onclick="goPage('weeklycreative',this)">Weekly Trend by Creative</button>
-    <button class="nav-tab" style="font-size:12px;color:var(--muted)" onclick="clearCache();location.reload();" title="데이터 새로고침">↻ Refresh</button>
+    <button class="nav-tab nav-refresh" style="font-size:12px;color:var(--muted)" onclick="clearCache();location.reload();" title="데이터 새로고침">↻ Refresh</button>
   </div>
 </nav>
 
@@ -617,6 +619,18 @@ async function loadAdsList(){
   else console.log('[JP IMG] 소재 이미지 탭 없음');
 }
 function driveUrl(u){const m=String(u).match(/\/d\/([^/?]+)/);return m?'https://lh3.googleusercontent.com/d/'+m[1]+'=s400':u;}
+function driveFallbackUrl(u){const m=String(u).match(/\/d\/([^/?]+)/);return m?'https://drive.google.com/thumbnail?id='+encodeURIComponent(m[1])+'&sz=w400':'';}
+function adImageError(img){
+  const source=img.dataset.source||'';
+  if(!img.dataset.retried){
+    img.dataset.retried='1';
+    const fallback=driveFallbackUrl(source);
+    if(fallback){img.src=fallback;return;}
+  }
+  img.parentElement.innerHTML=source?
+    '<a class="thumb-none" href="'+esc(source)+'" target="_blank" rel="noopener noreferrer">이미지 열기</a>':
+    '<div class="thumb-none">no image</div>';
+}
 /* 광고 전체 이름이 정확히 일치할 때만 썸네일을 붙인다. */
 function getAdImg(row){
   if(!AD_IMAGES.length)return'';
@@ -625,7 +639,7 @@ function getAdImg(row){
   if(!raw)return'';
   const matches=AD_IMAGES.filter(x=>x.n.trim()===raw);
   const hit=matches.length?latest(matches):null;
-  return hit?driveUrl(hit.u):'';
+  return hit?hit.u:'';
 }
 async function loadAux(){
   let aux=getCached(AUX_KEY);
@@ -913,14 +927,13 @@ function renderCreativeTable(){
     const chips='<div class="chips">'+
       (r.product?'<span class="chip" style="background:'+hexBg(pcol)+';color:'+pcol+'">'+esc(r.product)+'</span>':'')+
       (r.media?'<span class="chip '+(r.media==='vdo'?'bvdo':'bimg')+'">'+(r.media==='vdo'?'Video':'Image')+'</span>':'')+
-      (r.live?'<span class="chip">이름 날짜 '+esc(r.live.slice(2).replace(/-/g,''))+'</span>':'')+
       '</div>';
     return'<tr>'+
       '<td class="stick c0" style="padding-left:12px">'+(start+i+1)+'</td>'+
       '<td class="stick c1"><div class="namecell" title="'+esc(r.raw_name||'')+'">'+
         '<div class="adname">'+esc(r.ad_name||'—')+'</div>'+chips+
         '<div class="rawname">'+esc(r.raw_name||'')+'</div></div></td>'+
-      '<td class="ad-thumb-cell">'+(img?'<img class="ad-thumb" src="'+esc(img)+'" loading="lazy" onclick="openImg(this.src)" onerror="this.parentElement.innerHTML=\'<div class=&quot;thumb-none&quot;>no image</div>\'">':'<div class="thumb-none">no image</div>')+'</td>'+
+      '<td class="ad-thumb-cell">'+(img?'<img class="ad-thumb" src="'+esc(driveUrl(img))+'" data-source="'+esc(img)+'" alt="'+esc(r.ad_name||'소재 이미지')+'" loading="eager" onclick="openImg(this.src)" onerror="adImageError(this)">':'<div class="thumb-none">no image</div>')+'</td>'+
       '<td><span class="pp" style="background:'+hexBg(ccol)+';color:'+ccol+'">'+esc(r.creator||'—')+'</span></td>'+
       (splitByCampaign?'<td>'+esc((r.campaign||'').slice(0,24))+'</td>':'')+
       cols.map(k=>'<td class="num">'+fmtM(k,r[k])+'</td>').join('')+'</tr>';
