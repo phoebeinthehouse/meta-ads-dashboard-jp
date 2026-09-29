@@ -110,8 +110,8 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
 .ad-tbl tbody tr:hover td.stick{background:var(--surface2);}
 .ad-tbl tfoot td.stick{background:var(--surface2);}
 .c0{left:0;width:34px;min-width:34px;}
-.c1{left:34px;width:210px;min-width:210px;max-width:210px;}
-.namecell{max-width:196px;overflow:hidden;}
+.c1{left:34px;width:320px;min-width:320px;max-width:320px;}
+.namecell{max-width:306px;overflow:hidden;}
 .chips{display:flex;gap:4px;align-items:center;margin-top:3px;flex-wrap:wrap;}
 .chip{font-size:10px;padding:1px 6px;border-radius:8px;white-space:nowrap;}
 .ad-table-wrap{overflow-x:auto;}
@@ -132,6 +132,7 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
 .bvdo{background:#E6F1FB;color:#0C447C;}.bimg{background:#FAEEDA;color:#633806;}
 .pp{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:500;}
 .adname{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rawname{font-size:10px;line-height:1.35;color:var(--muted);white-space:normal;overflow-wrap:anywhere;margin-top:3px;}
 .pagination{display:flex;gap:4px;justify-content:center;padding:16px 0;align-items:center;flex-wrap:wrap;}
 .pg-btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:13px;cursor:pointer;border:.5px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-weight:500;transition:all .15s;}
 .pg-btn:hover{background:var(--surface2);}
@@ -288,9 +289,9 @@ body{font-family:'DM Sans','Helvetica Neue',sans-serif;background:var(--bg);colo
    Sheet : Amazon Dashboard (2025년~) / 탭 "JP meta raw"
    광고 이름 규칙 (US와 순서가 다름):
      GS_F1864_img_JP1review0902_Phoebe_260904
-     [0] 제품코드  [1] 타겟(사용 안 함)  [2] img|vdo
+     [0] 제품코드  [1] 타겟(사용 안 함)  [2] img|img2|vdo
      [3] 소재명    [4] Creator           [5] 소재 live 날짜(YYMMDD)
-   소재 이미지: "JP meta ads list" 탭 (A열 광고 이름 · B열 이미지 URL)
+   소재 이미지: "JP meta ads list" 탭 (C열 광고 전체 이름 · M열 공개 이미지 URL)
    ============================================================ */
 const API_URL='https://script.google.com/macros/s/AKfycbzxCoy9uj0X7IInXAhi4OHjciZBC1vq3mqC3q0O5uwfdytufvEfIl7y8Ci-RV8pnl7t/exec';
 const JP_SHEET='JP meta raw';
@@ -391,9 +392,9 @@ function parseAd(raw){
   const out={product:null,media:null,ad_name:null,creator:null,live:null};
   if(!t.length)return out;
   out.product=t[0]||null;
-  const mi=t.findIndex(x=>/^(img|vdo)$/i.test(x));
+  const mi=t.findIndex(x=>/^(img|vdo)\d*$/i.test(x));
   const base=mi>=0?mi:2;                       /* img/vdo 토큰이 없으면 규칙상 3번째 자리로 본다 */
-  if(mi>=0)out.media=t[mi].toLowerCase();
+  if(mi>=0)out.media=t[mi].toLowerCase().startsWith('img')?'img':'vdo';
   out.ad_name=t[base+1]||null;
   out.creator=t[base+2]||null;
   const live=t[base+3];
@@ -616,17 +617,14 @@ async function loadAdsList(){
   else console.log('[JP IMG] 소재 이미지 탭 없음');
 }
 function driveUrl(u){const m=String(u).match(/\/d\/([^/?]+)/);return m?'https://lh3.googleusercontent.com/d/'+m[1]+'=s400':u;}
-/* 광고 전체 이름 → 소재명+Creator+미디어 → 소재명 순으로 매칭 */
+/* 광고 전체 이름이 정확히 일치할 때만 썸네일을 붙인다. */
 function getAdImg(row){
   if(!AD_IMAGES.length)return'';
   const latest=a=>a.reduce((x,y)=>((y.d||'')>(x.d||'')?y:x));   /* 같은 이름이 여러 번이면 최신 */
-  const pick=fn=>{const m=AD_IMAGES.filter(fn);return m.length?latest(m):null;};
-  const raw=(row.raw_name||'').toLowerCase();
-  const name=(row.ad_name||'').toLowerCase(),cr=(row.creator||'').toLowerCase(),md=(row.media||'').toLowerCase();
-  let hit=raw?pick(x=>x.n.toLowerCase()===raw):null;
-  if(!hit&&raw)hit=pick(x=>x.n.toLowerCase().includes(raw));
-  if(!hit&&name)hit=pick(x=>{const l=x.n.toLowerCase();return l.includes(name)&&(!cr||l.includes(cr))&&(!md||l.includes(md));});
-  if(!hit&&name)hit=pick(x=>x.n.toLowerCase().includes(name));
+  const raw=(row.raw_name||'').trim();
+  if(!raw)return'';
+  const matches=AD_IMAGES.filter(x=>x.n.trim()===raw);
+  const hit=matches.length?latest(matches):null;
   return hit?driveUrl(hit.u):'';
 }
 async function loadAux(){
@@ -884,13 +882,8 @@ function creativeRows(){
   if(cFilters.media!=='All')src=src.filter(r=>r.media===cFilters.media);
   if(cFilters.campaign!=='All')src=src.filter(r=>r.campaign===cFilters.campaign);
   if(adNameSearch)src=src.filter(r=>(r.ad_name||'').toLowerCase().includes(adNameSearch)||(r.raw_name||'').toLowerCase().includes(adNameSearch));
-  const keys=splitByCampaign?['ad_name','creator','product','media','live','campaign']:['ad_name','creator','product','media','live'];
+  const keys=splitByCampaign?['raw_name','ad_name','creator','product','media','live','campaign']:['raw_name','ad_name','creator','product','media','live'];
   const rows=grp(src,keys);
-  /* 썸네일 매칭용으로 원본 이름 하나를 붙여둔다 */
-  rows.forEach(r=>{
-    const hit=src.find(x=>x.ad_name===r.ad_name&&x.creator===r.creator&&x.media===r.media);
-    r.raw_name=hit?hit.raw_name:'';
-  });
   return{rows:rows,src:src};
 }
 function renderCreativeTable(){
@@ -920,11 +913,13 @@ function renderCreativeTable(){
     const chips='<div class="chips">'+
       (r.product?'<span class="chip" style="background:'+hexBg(pcol)+';color:'+pcol+'">'+esc(r.product)+'</span>':'')+
       (r.media?'<span class="chip '+(r.media==='vdo'?'bvdo':'bimg')+'">'+(r.media==='vdo'?'Video':'Image')+'</span>':'')+
+      (r.live?'<span class="chip">이름 날짜 '+esc(r.live.slice(2).replace(/-/g,''))+'</span>':'')+
       '</div>';
     return'<tr>'+
       '<td class="stick c0" style="padding-left:12px">'+(start+i+1)+'</td>'+
       '<td class="stick c1"><div class="namecell" title="'+esc(r.raw_name||'')+'">'+
-        '<div class="adname">'+esc(r.ad_name||'—')+'</div>'+chips+'</div></td>'+
+        '<div class="adname">'+esc(r.ad_name||'—')+'</div>'+chips+
+        '<div class="rawname">'+esc(r.raw_name||'')+'</div></div></td>'+
       '<td class="ad-thumb-cell">'+(img?'<img class="ad-thumb" src="'+esc(img)+'" loading="lazy" onclick="openImg(this.src)" onerror="this.parentElement.innerHTML=\'<div class=&quot;thumb-none&quot;>no image</div>\'">':'<div class="thumb-none">no image</div>')+'</td>'+
       '<td><span class="pp" style="background:'+hexBg(ccol)+';color:'+ccol+'">'+esc(r.creator||'—')+'</span></td>'+
       (splitByCampaign?'<td>'+esc((r.campaign||'').slice(0,24))+'</td>':'')+
